@@ -230,7 +230,7 @@ function UserForm({ user, onDone }: { user: Me | null; onDone: () => void }) {
       </label>
       <label className="flex flex-col gap-1 text-xs">
         Email (login)
-        <input required type="email" className={inputCls} value={email} onChange={(e) => setEmail(e.target.value)} />
+        <input required type="email" autoComplete="off" className={inputCls} value={email} onChange={(e) => setEmail(e.target.value)} />
       </label>
       <label className="flex flex-col gap-1 text-xs">
         Role
@@ -244,10 +244,13 @@ function UserForm({ user, onDone }: { user: Me | null; onDone: () => void }) {
           <option value="">None</option>
           {lk.customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
+        {lk.customers.length === 0 && (
+          <span className="text-[#7A5A00]">No customers yet. Add them first in the Master data tab.</span>
+        )}
       </label>
       <label className="flex flex-col gap-1 text-xs">
         {user ? "Temporary password (leave empty to keep)" : "Temporary password (optional)"}
-        <input type="password" minLength={8} className={inputCls} value={password} onChange={(e) => setPassword(e.target.value)} />
+        <input type="password" minLength={8} autoComplete="new-password" className={inputCls} value={password} onChange={(e) => setPassword(e.target.value)} />
         <span className="text-muted-foreground">
           {user
             ? "The user must change it at next login."
@@ -284,6 +287,7 @@ function MasterTab() {
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["master-admin", kind] })
     qc.invalidateQueries({ queryKey: ["master", kind] })
+    qc.invalidateQueries({ queryKey: ["signup-options"] })
   }
   const add = useMutation({
     mutationFn: () =>
