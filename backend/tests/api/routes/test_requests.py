@@ -49,7 +49,7 @@ def test_full_request_flow(client: TestClient, db: Session) -> None:
 
     # Requester submits.
     body = {
-        "title": "Weekly 4G KPI report - East Java", "customer_id": cust, "contract_type": "contract",
+        "title": "Weekly 4G KPI report - East Java", "customer_id": cust,
         "category": "regular", "request_type_id": rtype, "domain_id": domain,
         "report_name": "Weekly 4G KPI - EJ", "frequency": "weekly",
         "business_purpose": "Used in the Monday regional performance call.",
@@ -132,7 +132,7 @@ def test_hold_and_resume(client: TestClient, db: Session) -> None:
     req_h, _ = _user(client, db, Role.requester, cust)
     mgr_h, _ = _user(client, db, Role.manager)
     body = {
-        "title": "Core packet loss analysis", "customer_id": cust, "contract_type": "non_contract",
+        "title": "Core packet loss analysis", "customer_id": cust,
         "category": "ad_hoc", "request_type_id": rtype, "domain_id": domain, "report_name": "Ad hoc",
         "frequency": "one_time", "business_purpose": "Check packet loss after the upgrade.",
         "priority": "low", "required_date": (date.today() + timedelta(days=10)).isoformat(),
@@ -164,7 +164,7 @@ def test_one_time_is_always_ad_hoc(client: TestClient, db: Session) -> None:
     cust, domain, rtype = _master(db)
     req_h, _ = _user(client, db, Role.requester, cust)
     body = {
-        "title": "One-time outage summary", "customer_id": cust, "contract_type": "contract",
+        "title": "One-time outage summary", "customer_id": cust,
         "category": "regular", "request_type_id": rtype, "domain_id": domain, "report_name": "Outage summary",
         "frequency": "one_time", "business_purpose": "Summary for the management meeting.",
         "priority": "medium", "required_date": (date.today() + timedelta(days=5)).isoformat(),

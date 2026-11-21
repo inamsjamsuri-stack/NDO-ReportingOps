@@ -146,9 +146,9 @@ def update(session: Session, req: Request, data: RequestUpdate, user: User) -> R
     if not is_manager:
         if req.requester_id != user.id or req.status != Status.submitted:
             raise TransitionError("You can edit this request only while it is Submitted.", 403)
-        # The requester set priority, contract type and domain at submit; only the
-        # commitment fields stay manager-only while the request is Submitted.
-        blocked = MANAGER_ONLY_FIELDS & (set(changes) - {"priority", "contract_type", "domain_id"})
+        # The requester set priority and domain at submit; only the commitment
+        # fields stay manager-only while the request is Submitted.
+        blocked = MANAGER_ONLY_FIELDS & (set(changes) - {"priority", "domain_id"})
         if blocked:
             raise TransitionError(f"Only a manager can change: {', '.join(sorted(blocked))}.", 403)
     if req.status in (Status.completed, Status.cancelled, Status.rejected):
@@ -171,7 +171,7 @@ def update(session: Session, req: Request, data: RequestUpdate, user: User) -> R
     events.audit(session, actor_id=user.id, action="request.updated", entity="request",
                  entity_id=req.id, old={k: d["old"] for k, d in log.items()},
                  new={k: d["new"] for k, d in log.items()})
-    if {"priority", "category", "contract_type", "request_type_id"} & set(log):
+    if {"priority", "category", "request_type_id"} & set(log):
         sla.recalculate(session, req)
     session.add(req)
     session.commit()

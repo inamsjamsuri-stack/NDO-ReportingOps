@@ -55,11 +55,9 @@ def match_policy(session: Session, req: Request) -> SlaPolicy | None:
     for p in candidates:
         if p.category is not None and p.category != req.category:
             continue
-        if p.contract_type is not None and p.contract_type != req.contract_type:
-            continue
         if p.request_type_id is not None and p.request_type_id != req.request_type_id:
             continue
-        score = sum(x is not None for x in (p.category, p.contract_type, p.request_type_id))
+        score = sum(x is not None for x in (p.category, p.request_type_id))
         if score > best_score:
             best, best_score = p, score
     return best

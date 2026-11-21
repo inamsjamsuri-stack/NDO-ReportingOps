@@ -89,11 +89,6 @@ class Category(StrEnum):
     ad_hoc = "ad_hoc"
 
 
-class ContractType(StrEnum):
-    contract = "contract"
-    non_contract = "non_contract"
-
-
 class Frequency(StrEnum):
     daily = "daily"
     weekly = "weekly"
@@ -343,7 +338,6 @@ class RequestCreate(SQLModel):
     title: str = Field(min_length=3, max_length=150)
     requester_id: uuid.UUID | None = None  # manager may submit on behalf
     customer_id: uuid.UUID
-    contract_type: ContractType
     category: Category
     request_type_id: uuid.UUID
     domain_id: uuid.UUID
@@ -360,7 +354,6 @@ class RequestUpdate(SQLModel):
 
     title: str | None = Field(default=None, min_length=3, max_length=150)
     customer_id: uuid.UUID | None = None
-    contract_type: ContractType | None = None
     category: Category | None = None
     request_type_id: uuid.UUID | None = None
     domain_id: uuid.UUID | None = None
@@ -380,7 +373,6 @@ MANAGER_ONLY_FIELDS = {
     "priority",
     "committed_date",
     "committed_late_reason",
-    "contract_type",
     "domain_id",
 }
 
@@ -398,7 +390,6 @@ class Request(SQLModel, table=True):
     requester_id: uuid.UUID = Field(foreign_key="app_user.id", index=True)
     submitted_by_id: uuid.UUID = Field(foreign_key="app_user.id")
     customer_id: uuid.UUID = Field(foreign_key="customer.id", index=True)
-    contract_type: ContractType = Field(sa_type=_enum(ContractType, "contract_type"))
     category: Category = Field(sa_type=_enum(Category, "category"))
     request_type_id: uuid.UUID = Field(foreign_key="request_type.id")
     domain_id: uuid.UUID = Field(foreign_key="domain.id", index=True)
@@ -432,7 +423,6 @@ class RequestPublic(SQLModel):
     requester_id: uuid.UUID
     submitted_by_id: uuid.UUID
     customer_id: uuid.UUID
-    contract_type: ContractType
     category: Category
     request_type_id: uuid.UUID
     domain_id: uuid.UUID
@@ -595,9 +585,6 @@ class SlaPolicy(SQLModel, table=True):
     name: str = Field(max_length=100)
     priority: Priority = Field(sa_type=_enum(Priority, "priority"))
     category: Category | None = Field(default=None, sa_type=_enum(Category, "category"))
-    contract_type: ContractType | None = Field(
-        default=None, sa_type=_enum(ContractType, "contract_type")
-    )
     request_type_id: uuid.UUID | None = Field(default=None, foreign_key="request_type.id")
     response_target_min: int = Field(gt=0)
     resolution_target_min: int = Field(gt=0)
@@ -611,7 +598,6 @@ class SlaPolicyCreate(SQLModel):
     name: str
     priority: Priority
     category: Category | None = None
-    contract_type: ContractType | None = None
     request_type_id: uuid.UUID | None = None
     response_target_min: int = Field(gt=0)
     resolution_target_min: int = Field(gt=0)

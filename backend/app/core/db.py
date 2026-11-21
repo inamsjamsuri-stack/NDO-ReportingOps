@@ -61,7 +61,6 @@ def init_db(session: Session) -> None:
             select(SlaPolicy).where(
                 SlaPolicy.priority == prio,
                 SlaPolicy.category == None,  # noqa: E711
-                SlaPolicy.contract_type == None,  # noqa: E711
                 SlaPolicy.request_type_id == None,  # noqa: E711
             )
         ).first()
