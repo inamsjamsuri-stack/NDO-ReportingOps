@@ -316,11 +316,55 @@ def test_update_password_me_same_password_error(
     )
 
 
-def test_self_signup_is_disabled(client: TestClient) -> None:
-    # PRD v1.1: accounts are created by the Administrator only.
-    data = {"email": random_email(), "password": random_lower_string(), "full_name": "x"}
-    r = client.post(f"{settings.API_V1_STR}/users/signup", json=data)
-    assert r.status_code in (404, 405)
+def test_signup_needs_admin_approval(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    from app.models import Customer
+
+    cust = Customer(name=f"Dept {random_lower_string()[:8]}")
+    db.add(cust)
+    db.commit()
+    opts = client.get(f"{settings.API_V1_STR}/users/signup-options").json()
+    assert any(c["id"] == str(cust.id) for c in opts["customers"])
+
+    email, password = random_email(), random_lower_string()
+    r = client.post(f"{settings.API_V1_STR}/users/signup", json={
+        "email": email, "password": password, "full_name": "New Requester",
+        "customer_id": str(cust.id), "reason": "I request weekly reports"})
+    assert r.status_code == 200, r.text
+
+    # Cannot log in before approval, and gets a clear message.
+    r = client.post(f"{settings.API_V1_STR}/login/access-token", data={"username": email, "password": password})
+    assert r.status_code == 400
+    assert "waiting for admin approval" in r.json()["detail"]
+
+    user = db.exec(select(User).where(User.email == email)).first()
+    assert user and user.is_active is False and user.role.value == "requester"
+
+    r = client.post(f"{settings.API_V1_STR}/users/{user.id}/approve", headers=superuser_token_headers,
+                    json={"role": "requester"})
+    assert r.status_code == 200, r.text
+    r = client.post(f"{settings.API_V1_STR}/login/access-token", data={"username": email, "password": password})
+    assert r.status_code == 200
+
+
+def test_signup_reject(client: TestClient, superuser_token_headers: dict[str, str], db: Session) -> None:
+    from app.models import Customer
+
+    cust = Customer(name=f"Dept {random_lower_string()[:8]}")
+    db.add(cust)
+    db.commit()
+    email, password = random_email(), random_lower_string()
+    client.post(f"{settings.API_V1_STR}/users/signup", json={
+        "email": email, "password": password, "full_name": "Someone", "customer_id": str(cust.id)})
+    user = db.exec(select(User).where(User.email == email)).first()
+    assert user
+    r = client.post(f"{settings.API_V1_STR}/users/{user.id}/reject", headers=superuser_token_headers,
+                    json={"reason": "Not part of the programme"})
+    assert r.status_code == 200
+    r = client.post(f"{settings.API_V1_STR}/login/access-token", data={"username": email, "password": password})
+    assert r.status_code == 400
+    assert "not approved" in r.json()["detail"]
 
 
 def test_update_user(

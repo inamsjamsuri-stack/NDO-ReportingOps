@@ -75,8 +75,10 @@ function UsersTab() {
     },
     onError: (e) => showErrorToast(errorMessage(e)),
   })
+  const pending = (data?.data ?? []).filter((u) => u.approval_status === "pending")
   return (
     <div className="flex flex-col gap-4">
+      {pending.length > 0 && <PendingRequests users={pending} />}
       <div>
         <button type="button" className={btnPrimary} onClick={() => setEditing("new")}>Add user</button>
       </div>
@@ -91,13 +93,15 @@ function UsersTab() {
             </tr>
           </thead>
           <tbody>
-            {(data?.data ?? []).map((u) => (
+            {(data?.data ?? []).filter((u) => u.approval_status !== "pending").map((u) => (
               <tr key={u.id} className="border-t">
                 <td className="px-3 py-2.5 font-medium">{u.full_name ?? "—"}</td>
                 <td className="px-3 py-2.5">{u.email}</td>
                 <td className="px-3 py-2.5">{ROLE[u.role]}</td>
                 <td className="px-3 py-2.5">{u.customer_id ? lk.customerById[u.customer_id]?.name ?? "—" : "—"}</td>
-                <td className="px-3 py-2.5">{u.is_active ? <Tag tone="good">Active</Tag> : <Tag>Inactive</Tag>}</td>
+                <td className="px-3 py-2.5">
+                  {u.approval_status === "rejected" ? <Tag tone="bad">Rejected</Tag> : u.is_active ? <Tag tone="good">Active</Tag> : <Tag>Inactive</Tag>}
+                </td>
                 <td className="whitespace-nowrap px-3 py-2.5 text-right">
                   <button type="button" className="text-primary hover:underline" onClick={() => setEditing(u)}>Edit</button>
                   {u.is_active && u.id !== lk.me?.id && (
@@ -118,6 +122,65 @@ function UsersTab() {
         </table>
       </div>
     </div>
+  )
+}
+
+function PendingRequests({ users }: { users: Me[] }) {
+  const qc = useQueryClient()
+  const lk = useLookups()
+  const { showErrorToast, showSuccessToast } = useCustomToast()
+  const [roles, setRoles] = useState<Record<string, Role>>({})
+  const done = (msg: string) => {
+    showSuccessToast(msg)
+    qc.invalidateQueries({ queryKey: ["users"] })
+    qc.invalidateQueries({ queryKey: ["directory"] })
+  }
+  const approve = useMutation({
+    mutationFn: (u: Me) => api.approveUser(u.id, { role: roles[u.id] ?? "requester", customer_id: u.customer_id }),
+    onSuccess: (u) => done(`${u.full_name ?? u.email} can now log in`),
+    onError: (e) => showErrorToast(errorMessage(e)),
+  })
+  const reject = useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) => api.rejectUser(id, reason),
+    onSuccess: () => done("Request rejected"),
+    onError: (e) => showErrorToast(errorMessage(e)),
+  })
+  return (
+    <section className="rounded-md border border-[#FFE27A] bg-[#FFFBEA] p-4">
+      <h2 className="mb-3 text-[15px] font-semibold">Account requests waiting for approval ({users.length})</h2>
+      <ul className="flex flex-col divide-y divide-[#FFE27A]">
+        {users.map((u) => (
+          <li key={u.id} className="flex flex-wrap items-center gap-3 py-3">
+            <div className="flex min-w-[240px] flex-1 flex-col">
+              <span className="text-sm font-semibold">{u.full_name} · <span className="font-normal">{u.email}</span></span>
+              <span className="text-xs text-muted-foreground">
+                {u.customer_id ? lk.customerById[u.customer_id]?.name ?? "—" : "—"} · asked {fmtDate(u.created_at ?? null)}
+              </span>
+              {u.registration_note && <span className="mt-1 text-sm">“{u.registration_note}”</span>}
+            </div>
+            <label className="flex items-center gap-2 text-xs">
+              Role
+              <select className={cn(inputCls, "w-36")} value={roles[u.id] ?? "requester"}
+                onChange={(e) => setRoles({ ...roles, [u.id]: e.target.value as Role })}>
+                {(Object.keys(ROLE) as Role[]).map((r) => <option key={r} value={r}>{ROLE[r]}</option>)}
+              </select>
+            </label>
+            <button type="button" className={btnPrimary} disabled={approve.isPending} onClick={() => approve.mutate(u)}>Approve</button>
+            <button
+              type="button"
+              className={btn}
+              disabled={reject.isPending}
+              onClick={() => {
+                const reason = window.prompt(`Why is ${u.full_name}'s request rejected? They will see this.`)
+                if (reason && reason.trim().length >= 3) reject.mutate({ id: u.id, reason: reason.trim() })
+              }}
+            >
+              Reject
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
   )
 }
 

@@ -18,6 +18,7 @@ import type {
   RequestSla,
   RequestsList,
   RequestUpdate,
+  SignupOptions,
   SlaPolicy,
   TimeLog,
   UsersList,
@@ -95,6 +96,12 @@ export const api = {
   updateUser: (id: string, body: Partial<Me> & { password?: string }) =>
     patch<Me>(`/users/${id}`, body),
   deactivateUser: (id: string) => del<{ message: string }>(`/users/${id}`),
+  signupOptions: () => get<SignupOptions>("/users/signup-options"),
+  signup: (body: { email: string; password: string; full_name: string; customer_id: string; reason?: string }) =>
+    post<{ message: string }>("/users/signup", body),
+  approveUser: (id: string, body: { role: string; customer_id?: string | null }) =>
+    post<Me>(`/users/${id}/approve`, body),
+  rejectUser: (id: string, reason: string) => post<{ message: string }>(`/users/${id}/reject`, { reason }),
 
   master: (kind: MasterKind, includeInactive = false) =>
     get<MasterEntry[]>(`/master/${kind}`, { include_inactive: includeInactive }),

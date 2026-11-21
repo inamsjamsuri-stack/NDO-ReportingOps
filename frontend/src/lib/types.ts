@@ -29,7 +29,15 @@ export interface Me {
   is_active: boolean
   is_superuser: boolean
   customer_id: string | null
+  approval_status?: "approved" | "pending" | "rejected"
+  registration_note?: string | null
   created_at?: string | null
+}
+
+export interface SignupOptions {
+  enabled: boolean
+  allowed_domains: string[]
+  customers: { id: string; name: string }[]
 }
 
 export interface DirectoryEntry {

@@ -130,7 +130,10 @@ function Login() {
           </div>
 
           <p className="text-center text-sm text-muted-foreground">
-            No account yet? Ask the ReportOps administrator.
+            No account yet?{" "}
+            <RouterLink to="/signup" className="text-primary underline underline-offset-4">
+              Request an account
+            </RouterLink>
           </p>
         </form>
       </Form>

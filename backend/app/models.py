@@ -128,6 +128,12 @@ class HolidayKind(StrEnum):
     company = "company"
 
 
+class ApprovalStatus(StrEnum):
+    approved = "approved"
+    pending = "pending"  # self-registered, waiting for an admin
+    rejected = "rejected"
+
+
 class SlaCalendar(StrEnum):
     working = "working"
     always = "24x7"
@@ -152,9 +158,23 @@ class UserCreate(UserBase):
 
 
 class UserRegister(SQLModel):
+    """Self-registration by a requester. The account stays inactive until an
+    admin approves it."""
+
     email: EmailStr = Field(max_length=255)
     password: str = Field(min_length=8, max_length=128)
-    full_name: str | None = Field(default=None, max_length=255)
+    full_name: str = Field(min_length=2, max_length=255)
+    customer_id: uuid.UUID
+    reason: str | None = Field(default=None, max_length=500)  # why they need access
+
+
+class ApprovalIn(SQLModel):
+    role: Role = Role.requester
+    customer_id: uuid.UUID | None = None
+
+
+class RejectionIn(SQLModel):
+    reason: str = Field(min_length=3, max_length=500)
 
 
 class UserUpdate(SQLModel):
@@ -182,6 +202,10 @@ class User(UserBase, table=True):
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     hashed_password: str | None = None  # null when LDAP/SSO is used later
+    approval_status: ApprovalStatus = Field(
+        default=ApprovalStatus.approved, sa_type=_enum(ApprovalStatus, "approval_status")
+    )
+    registration_note: str | None = Field(default=None, max_length=500)
     failed_login_count: int = 0
     locked_until: datetime | None = _ts(default=None)
     last_login_at: datetime | None = _ts(default=None)
@@ -191,6 +215,8 @@ class User(UserBase, table=True):
 
 class UserPublic(UserBase):
     id: uuid.UUID
+    approval_status: ApprovalStatus = ApprovalStatus.approved
+    registration_note: str | None = None
     created_at: datetime | None = None
 
 

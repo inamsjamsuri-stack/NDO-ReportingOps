@@ -9,7 +9,7 @@ from app import crud
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
 from app.core import security
 from app.core.config import settings
-from app.models import Message, NewPassword, Token, UserPublic, UserUpdate
+from app.models import ApprovalStatus, Message, NewPassword, Token, UserPublic, UserUpdate
 from app.utils import (
     generate_password_reset_token,
     generate_reset_password_email,
@@ -32,6 +32,10 @@ def login_access_token(
     )
     if not user:
         raise HTTPException(status_code=400, detail="Incorrect email or password")
+    elif user.approval_status == ApprovalStatus.pending:
+        raise HTTPException(status_code=400, detail="Your account is waiting for admin approval.")
+    elif user.approval_status == ApprovalStatus.rejected:
+        raise HTTPException(status_code=400, detail="Your account request was not approved. Contact the ReportOps administrator.")
     elif not user.is_active:
         raise HTTPException(status_code=400, detail="Inactive user")
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -86,6 +90,10 @@ def reset_password(session: SessionDep, body: NewPassword) -> Message:
     if not user:
         # Don't reveal that the user doesn't exist - use same error as invalid token
         raise HTTPException(status_code=400, detail="Invalid token")
+    elif user.approval_status == ApprovalStatus.pending:
+        raise HTTPException(status_code=400, detail="Your account is waiting for admin approval.")
+    elif user.approval_status == ApprovalStatus.rejected:
+        raise HTTPException(status_code=400, detail="Your account request was not approved. Contact the ReportOps administrator.")
     elif not user.is_active:
         raise HTTPException(status_code=400, detail="Inactive user")
     user_in_update = UserUpdate(password=body.new_password)

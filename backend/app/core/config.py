@@ -57,6 +57,10 @@ class Settings(BaseSettings):
     EMAIL_RESET_TOKEN_EXPIRE_HOURS: int = 48
 
     # ReportOps
+    # Self-registration: comma-separated email domains allowed to sign up,
+    # e.g. "ioh.co.id". Empty = any domain (an admin still has to approve).
+    SIGNUP_ALLOWED_DOMAINS: str = ""
+    SIGNUP_ENABLED: bool = True
     ATTACHMENT_DIR: str = "/data/attachments"  # Podman volume in containers
     APP_TIMEZONE: str = "Asia/Jakarta"
 

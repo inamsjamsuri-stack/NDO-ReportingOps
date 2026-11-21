@@ -32,6 +32,7 @@ EMAIL_EVENTS = {
     "completed",
     "deadline_reminder",
     "overdue",
+    "signup_request",
 }
 # Overdue email cannot be switched off for managers.
 LOCKED_FOR_MANAGERS = {"overdue"}
