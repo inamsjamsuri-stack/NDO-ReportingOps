@@ -11,7 +11,7 @@
 services:
   db:
     image: docker.io/library/postgres:16
-    restart: unless-stopped
+    restart: always
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d app"]
       interval: 10s
@@ -30,7 +30,7 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
-    restart: unless-stopped
+    restart: always
     depends_on:
       db:
         condition: service_healthy
@@ -51,7 +51,7 @@ services:
 
   worker:
     image: localhost/reportops-backend:latest
-    restart: unless-stopped
+    restart: always
     depends_on:
       backend:
         condition: service_healthy
@@ -63,7 +63,7 @@ services:
 
   backup:
     image: docker.io/library/postgres:16
-    restart: unless-stopped
+    restart: always
     depends_on:
       db:
         condition: service_healthy
@@ -75,10 +75,10 @@ services:
       BACKUP_HOUR: ${BACKUP_HOUR:-01}
       TZ: Asia/Jakarta
     volumes:
-      - ./scripts/backup.sh:/backup.sh:ro
-      - ./scripts/restore.sh:/restore.sh:ro
+      - ./scripts/backup.sh:/backup.sh:ro,z
+      - ./scripts/restore.sh:/restore.sh:ro,z
       - reportops-files:/data/attachments:ro
-      - ${BACKUP_DIR:-./backups}:/backups
+      - ${BACKUP_DIR:-./backups}:/backups:z
     command: ["bash", "/backup.sh", "--loop"]
 
 volumes:
