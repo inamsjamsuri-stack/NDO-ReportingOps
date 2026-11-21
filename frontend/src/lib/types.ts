@@ -262,3 +262,15 @@ export interface CalendarSettings {
   break_start: string | null
   break_end: string | null
 }
+
+export interface AuditEntry {
+  id: number
+  at: string
+  actor_id: string | null
+  action: string
+  entity: string | null
+  entity_id: string | null
+  old_value: unknown
+  new_value: unknown
+  ip_address: string | null
+}

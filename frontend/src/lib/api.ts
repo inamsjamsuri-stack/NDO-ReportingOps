@@ -2,6 +2,7 @@ import axios, { AxiosError } from "axios"
 
 import type {
   ActivityItem,
+  AuditEntry,
   Assignment,
   AttachmentItem,
   CalendarSettings,
@@ -82,6 +83,9 @@ export interface RequestFilters {
   engineer_id?: string
   overdue?: boolean
   mine?: boolean
+  date_field?: "submitted" | "completed"
+  date_from?: string
+  date_to?: string
   sort?: string
   skip?: number
   limit?: number
@@ -113,6 +117,18 @@ export const api = {
     patch<MasterEntry>(`/master/${kind}/${id}`, body),
 
   requests: (f: RequestFilters) => get<RequestsList>("/requests/", f),
+  exportRequests: async (f: RequestFilters) => {
+    const { skip: _s, limit: _l, ...params } = f
+    const res = await http.get("/requests/export.csv", { params, responseType: "blob" })
+    const name =
+      /filename="([^"]+)"/.exec(String(res.headers["content-disposition"] ?? ""))?.[1] ?? "reportops-requests.csv"
+    const url = URL.createObjectURL(res.data as Blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = name
+    a.click()
+    URL.revokeObjectURL(url)
+  },
   request: (id: string) => get<RequestItem>(`/requests/${id}`),
   createRequest: (body: RequestCreate) => post<RequestItem>("/requests/", body),
   updateRequest: (id: string, body: RequestUpdate) => patch<RequestItem>(`/requests/${id}`, body),
@@ -176,4 +192,5 @@ export const api = {
   calendar: () => get<CalendarSettings>("/admin/calendar"),
   saveCalendar: (body: CalendarSettings) => put<CalendarSettings>("/admin/calendar", body),
   recalculateSla: () => post<{ message: string }>("/admin/recalculate-sla"),
+  auditLog: (params: object) => get<{ data: AuditEntry[]; count: number }>("/admin/audit-log", params),
 }

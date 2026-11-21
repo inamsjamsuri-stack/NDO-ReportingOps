@@ -1,14 +1,17 @@
 """Reporting requests: inbox, detail, edits, workflow moves, assignments,
 time logs, comments, attachments, history and SLA."""
 
+import csv
 import hashlib
+import io
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
+from decimal import Decimal
 from pathlib import Path
 from typing import Annotated, Any
 
-from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy import case, or_
 from sqlmodel import col, func, select
 
@@ -24,6 +27,8 @@ from app.models import (
     Attachment,
     AttachmentPublic,
     Comment,
+    Customer,
+    Domain,
     CommentCreate,
     CommentPublic,
     Message,
@@ -33,6 +38,7 @@ from app.models import (
     RequestPublic,
     RequestSla,
     RequestSlaPublic,
+    RequestType,
     RequestsPublic,
     RequestUpdate,
     Role,
@@ -70,55 +76,153 @@ def _get(session: SessionDep, request_id: uuid.UUID, user: User) -> Request:
 # ---------------------------------------------------------------------------
 
 
+class InboxFilters:
+    """Shared filters for the inbox list and the CSV export."""
+
+    def __init__(
+        self,
+        q: str | None = None,
+        status: Annotated[list[Status] | None, Query()] = None,
+        priority: Annotated[list[Priority] | None, Query()] = None,
+        customer_id: uuid.UUID | None = None,
+        domain_id: uuid.UUID | None = None,
+        engineer_id: uuid.UUID | None = None,
+        overdue: bool | None = None,
+        mine: bool = False,
+        date_field: str = "submitted",  # "submitted" or "completed"
+        date_from: date | None = None,
+        date_to: date | None = None,
+        sort: str = "committed_date",
+    ) -> None:
+        self.q, self.status, self.priority = q, status, priority
+        self.customer_id, self.domain_id, self.engineer_id = customer_id, domain_id, engineer_id
+        self.overdue, self.mine, self.sort = overdue, mine, sort
+        self.date_field, self.date_from, self.date_to = date_field, date_from, date_to
+
+    def apply(self, session: Any, user: User) -> Any:
+        stmt = svc.visible(select(Request), user)
+        if self.q:
+            like = f"%{self.q.strip()}%"
+            stmt = stmt.where(or_(col(Request.code).ilike(like), col(Request.title).ilike(like),
+                                  col(Request.report_name).ilike(like)))
+        if self.status:
+            stmt = stmt.where(col(Request.status).in_(self.status))
+        if self.priority:
+            stmt = stmt.where(col(Request.priority).in_(self.priority))
+        if self.customer_id:
+            stmt = stmt.where(Request.customer_id == self.customer_id)
+        if self.domain_id:
+            stmt = stmt.where(Request.domain_id == self.domain_id)
+        if self.engineer_id:
+            stmt = stmt.where(col(Request.id).in_(
+                select(Assignment.request_id).where(Assignment.engineer_id == self.engineer_id, Assignment.is_active)))
+        if self.mine:
+            stmt = stmt.where(or_(Request.requester_id == user.id, col(Request.id).in_(
+                select(Assignment.request_id).where(Assignment.engineer_id == user.id, Assignment.is_active))))
+        tz = svc.sla.load_calendar(session).tz
+        if self.overdue:
+            today = datetime.now(UTC).astimezone(tz).date()
+            stmt = stmt.where(col(Request.status).not_in(CLOSED_STATUSES), col(Request.committed_date) < today)
+        if self.date_from or self.date_to:
+            column = col(Request.completed_at) if self.date_field == "completed" else col(Request.submitted_at)
+            if self.date_from:
+                stmt = stmt.where(column >= datetime.combine(self.date_from, time(), tzinfo=tz))
+            if self.date_to:
+                stmt = stmt.where(column < datetime.combine(self.date_to + timedelta(days=1), time(), tzinfo=tz))
+        return stmt
+
+    def order(self) -> Any:
+        return {
+            "committed_date": col(Request.committed_date).asc().nulls_last(),
+            "newest": col(Request.submitted_at).desc(),
+            "oldest": col(Request.submitted_at).asc(),
+            "completed": col(Request.completed_at).desc().nulls_last(),
+            "priority": case({"critical": 0, "high": 1, "medium": 2, "low": 3}, value=col(Request.priority)),
+        }.get(self.sort, col(Request.committed_date).asc().nulls_last())
+
+
 @router.get("/", response_model=RequestsPublic)
 def list_requests(
     session: SessionDep,
     current_user: CurrentUser,
-    q: str | None = None,
-    status: Annotated[list[Status] | None, Query()] = None,
-    priority: Annotated[list[Priority] | None, Query()] = None,
-    customer_id: uuid.UUID | None = None,
-    domain_id: uuid.UUID | None = None,
-    engineer_id: uuid.UUID | None = None,
-    overdue: bool | None = None,
-    mine: bool = False,
-    sort: str = "committed_date",
+    f: Annotated[InboxFilters, Depends()],
     skip: int = 0,
     limit: Annotated[int, Query(le=200)] = 50,
 ) -> Any:
     """Inbox with search, filters and sorting. Visibility follows the user's role."""
-    stmt = svc.visible(select(Request), current_user)
-    if q:
-        like = f"%{q.strip()}%"
-        stmt = stmt.where(or_(col(Request.code).ilike(like), col(Request.title).ilike(like),
-                              col(Request.report_name).ilike(like)))
-    if status:
-        stmt = stmt.where(col(Request.status).in_(status))
-    if priority:
-        stmt = stmt.where(col(Request.priority).in_(priority))
-    if customer_id:
-        stmt = stmt.where(Request.customer_id == customer_id)
-    if domain_id:
-        stmt = stmt.where(Request.domain_id == domain_id)
-    if engineer_id:
-        stmt = stmt.where(col(Request.id).in_(
-            select(Assignment.request_id).where(Assignment.engineer_id == engineer_id, Assignment.is_active)))
-    if mine:
-        stmt = stmt.where(or_(Request.requester_id == current_user.id, col(Request.id).in_(
-            select(Assignment.request_id).where(Assignment.engineer_id == current_user.id, Assignment.is_active))))
-    if overdue:
-        today = datetime.now(UTC).astimezone(svc.sla.load_calendar(session).tz).date()
-        stmt = stmt.where(col(Request.status).not_in(CLOSED_STATUSES),
-                          col(Request.committed_date) < today)
+    stmt = f.apply(session, current_user)
     count = session.exec(select(func.count()).select_from(stmt.subquery())).one()
-    order = {
-        "committed_date": col(Request.committed_date).asc().nulls_last(),
-        "newest": col(Request.submitted_at).desc(),
-        "oldest": col(Request.submitted_at).asc(),
-        "priority": case({"critical": 0, "high": 1, "medium": 2, "low": 3}, value=col(Request.priority)),
-    }.get(sort, col(Request.committed_date).asc().nulls_last())
-    rows = session.exec(stmt.order_by(order).offset(skip).limit(limit)).all()
+    rows = session.exec(stmt.order_by(f.order()).offset(skip).limit(limit)).all()
     return RequestsPublic(data=[RequestPublic.model_validate(r) for r in rows], count=count)
+
+
+EXPORT_MAX_ROWS = 20000
+
+
+@router.get("/export.csv")
+def export_requests(
+    session: SessionDep,
+    current_user: CurrentUser,
+    f: Annotated[InboxFilters, Depends()],
+) -> StreamingResponse:
+    """The same list as the inbox, as a CSV file (opens in Excel)."""
+    rows = session.exec(f.apply(session, current_user).order_by(f.order()).limit(EXPORT_MAX_ROWS)).all()
+    ids = [r.id for r in rows]
+    names = {
+        "customer": {c.id: c.name for c in session.exec(select(Customer)).all()},
+        "domain": {d.id: d.name for d in session.exec(select(Domain)).all()},
+        "type": {t.id: t.name for t in session.exec(select(RequestType)).all()},
+        "user": {u.id: (u.full_name or u.email) for u in session.exec(select(User)).all()},
+    }
+    primary: dict[uuid.UUID, uuid.UUID] = {}
+    hours: dict[uuid.UUID, Decimal] = {}
+    if ids:
+        for a in session.exec(select(Assignment).where(col(Assignment.request_id).in_(ids))).all():
+            if a.is_active and a.assignment_role.value == "primary":
+                primary[a.request_id] = a.engineer_id
+        for rid, total in session.exec(
+            select(Assignment.request_id, func.sum(TimeLog.hours))
+            .join(TimeLog, col(TimeLog.assignment_id) == Assignment.id)
+            .where(col(Assignment.request_id).in_(ids))
+            .group_by(col(Assignment.request_id))
+        ).all():
+            hours[rid] = Decimal(total or 0)
+    slas = {s.request_id: s for s in session.exec(select(RequestSla).where(col(RequestSla.request_id).in_(ids))).all()} if ids else {}
+    tz = svc.sla.load_calendar(session).tz
+
+    def local(dt: datetime | None) -> str:
+        return dt.astimezone(tz).strftime("%Y-%m-%d %H:%M") if dt else ""
+
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["ID", "Title", "Status", "Priority", "Customer", "Domain", "Request type", "Category",
+                "Frequency", "Report", "Requester", "Primary engineer", "Submitted (WIB)", "Required date",
+                "Committed date", "Completed (WIB)", "Estimated hours", "Actual hours",
+                "Resolution (working h)", "SLA breached", "Overdue"])
+    for r in rows:
+        sla_row = slas.get(r.id)
+        w.writerow([
+            r.code, r.title, r.status.value, r.priority.value,
+            names["customer"].get(r.customer_id, ""), names["domain"].get(r.domain_id, ""),
+            names["type"].get(r.request_type_id, ""), r.category.value, r.frequency.value,
+            r.report_name or "", names["user"].get(r.requester_id, ""),
+            names["user"].get(primary.get(r.id), "") if primary.get(r.id) else "",
+            local(r.submitted_at), r.required_date.isoformat(),
+            r.committed_date.isoformat() if r.committed_date else "", local(r.completed_at),
+            str(r.estimated_hours or ""), str(hours.get(r.id, "")),
+            round(sla_row.resolution_min / 60, 1) if sla_row and sla_row.resolution_min is not None else "",
+            ("yes" if sla_row.is_breached else "no") if sla_row else "",
+            "yes" if r.is_overdue else "no",
+        ])
+    events.audit(session, actor_id=current_user.id, action="export", entity="request",
+                 new={"rows": len(rows)})
+    session.commit()
+    stamp = datetime.now(tz).strftime("%Y%m%d-%H%M")
+    data = "\ufeff" + buf.getvalue()  # BOM so Excel reads UTF-8 correctly
+    return StreamingResponse(
+        iter([data]), media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="reportops-requests-{stamp}.csv"'},
+    )
 
 
 @router.post("/", response_model=RequestPublic)

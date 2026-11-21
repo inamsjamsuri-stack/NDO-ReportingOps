@@ -63,7 +63,7 @@ def read_users(session: SessionDep, skip: int = 0, limit: int = 100) -> Any:
 @router.post(
     "/", dependencies=[Depends(get_current_active_superuser)], response_model=UserPublic
 )
-def create_user(*, session: SessionDep, user_in: AdminUserCreate) -> Any:
+def create_user(*, session: SessionDep, current_user: CurrentUser, user_in: AdminUserCreate) -> Any:
     """
     Create new user. Without a password the person gets an email link to set one;
     with a password they must change it when they first log in.
@@ -88,6 +88,9 @@ def create_user(*, session: SessionDep, user_in: AdminUserCreate) -> Any:
         db_user.hashed_password = get_password_hash(user_in.password)
         db_user.must_change_password = True
     session.add(db_user)
+    session.flush()
+    events.audit(session, actor_id=current_user.id, action="user.created", entity="user", entity_id=db_user.id,
+                 new={"email": db_user.email, "role": db_user.role.value})
     session.commit()
     session.refresh(db_user)
     if settings.emails_enabled:
@@ -346,6 +349,7 @@ def read_user_by_id(
 def update_user(
     *,
     session: SessionDep,
+    current_user: CurrentUser,
     user_id: uuid.UUID,
     user_in: UserUpdate,
 ) -> Any:
@@ -366,7 +370,14 @@ def update_user(
                 status_code=409, detail="User with this email already exists"
             )
 
+    before = {"role": db_user.role.value, "is_active": db_user.is_active, "customer_id": str(db_user.customer_id)}
     db_user = crud.update_user(session=session, db_user=db_user, user_in=user_in)
+    changed = user_in.model_dump(exclude_unset=True, exclude={"password"}, mode="json")
+    if user_in.password:
+        changed["password"] = "reset"
+    events.audit(session, actor_id=current_user.id, action="user.updated", entity="user", entity_id=db_user.id,
+                 old=before, new=changed)
+    session.commit()
     if user_in.password:
         # A password set by an admin is temporary.
         db_user.must_change_password = True

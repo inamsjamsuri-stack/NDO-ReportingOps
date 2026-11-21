@@ -1,11 +1,12 @@
 import { useQuery } from "@tanstack/react-query"
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router"
-import { Search } from "lucide-react"
+import { Download, Search } from "lucide-react"
 import { useEffect, useState } from "react"
 
 import { PageHeader, PriorityLabel, SlaTag, StatusBadge } from "@/components/Common/Badges"
 import { personName, useLookups } from "@/hooks/useLookups"
-import { api, type RequestFilters } from "@/lib/api"
+import useCustomToast from "@/hooks/useCustomToast"
+import { api, errorMessage, type RequestFilters } from "@/lib/api"
 import { BOARD_COLUMNS, fmtDate, initials, OPEN_STATUSES, PRIORITY, STATUS } from "@/lib/format"
 import type { Priority, RequestItem, Status } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -22,6 +23,9 @@ interface InboxSearch {
   all?: boolean
   sort?: string
   page?: number
+  dateField?: "submitted" | "completed"
+  from?: string
+  to?: string
 }
 
 export const Route = createFileRoute("/_layout/requests/")({
@@ -38,6 +42,9 @@ export const Route = createFileRoute("/_layout/requests/")({
     all: s.all === true || s.all === "true" ? true : undefined,
     sort: typeof s.sort === "string" ? s.sort : undefined,
     page: typeof s.page === "number" && s.page > 1 ? s.page : undefined,
+    dateField: s.dateField === "completed" ? "completed" : undefined,
+    from: typeof s.from === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s.from) ? s.from : undefined,
+    to: typeof s.to === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s.to) ? s.to : undefined,
   }),
   head: () => ({ meta: [{ title: "Inbox - ReportOps" }] }),
 })
@@ -52,6 +59,7 @@ const TABS: Tab[] = [
   { key: "overdue", label: "Overdue", search: { overdue: true } },
   { key: "hold", label: "On hold", search: { status: "on_hold" } },
   { key: "done", label: "Completed", search: { status: "completed" } },
+  { key: "closed", label: "Closed", search: { status: "completed,rejected,cancelled" } },
   { key: "all", label: "All", search: { all: true } },
 ]
 
@@ -60,8 +68,9 @@ function activeTab(s: InboxSearch): string {
   if (s.overdue) return "overdue"
   if (s.status === "on_hold") return "hold"
   if (s.status === "completed") return "done"
+  if (s.status === "completed,rejected,cancelled") return "closed"
   if (s.all) return "all"
-  if (!s.status) return "open"
+  if (!s.status && !s.from && !s.to && !s.dateField) return "open"
   return ""
 }
 
@@ -69,6 +78,7 @@ function InboxPage() {
   const search = Route.useSearch()
   const navigate = useNavigate({ from: Route.fullPath })
   const lk = useLookups()
+  const { showErrorToast } = useCustomToast()
   const board = search.view === "board"
   const [q, setQ] = useState(search.q ?? "")
 
@@ -82,8 +92,8 @@ function InboxPage() {
 
   const statuses: string[] | undefined = search.status
     ? search.status.split(",")
-    : search.all || search.overdue
-      ? undefined
+    : search.all || search.overdue || search.from || search.to || search.dateField === "completed"
+      ? undefined // a date range looks at history, so closed requests are included
       : OPEN_STATUSES
   const filters: RequestFilters = {
     q: search.q,
@@ -93,6 +103,9 @@ function InboxPage() {
     domain_id: search.domain,
     overdue: search.overdue,
     mine: search.mine,
+    date_field: search.dateField ?? "submitted",
+    date_from: search.from,
+    date_to: search.to,
     sort: search.sort ?? "committed_date",
     skip: board ? 0 : ((search.page ?? 1) - 1) * PAGE,
     limit: board ? 200 : PAGE,
@@ -101,11 +114,30 @@ function InboxPage() {
   const set = (patch: Partial<InboxSearch>) =>
     navigate({ search: (prev) => ({ ...prev, ...patch, page: undefined }) })
   const tab = activeTab(search)
+  const [exporting, setExporting] = useState(false)
+  const doExport = async () => {
+    setExporting(true)
+    try {
+      await api.exportRequests({ ...filters, status: board && !search.status ? undefined : filters.status })
+    } catch (e) {
+      showErrorToast(errorMessage(e))
+    } finally {
+      setExporting(false)
+    }
+  }
   const pages = Math.max(1, Math.ceil((data?.count ?? 0) / PAGE))
 
   return (
     <div>
       <PageHeader title={board ? "Board" : "Inbox"}>
+        <button
+          type="button"
+          onClick={doExport}
+          disabled={exporting}
+          className="inline-flex h-9 items-center gap-1.5 rounded border px-3 text-sm font-medium hover:bg-muted disabled:opacity-50"
+        >
+          <Download className="size-4" aria-hidden /> {exporting ? "Exporting…" : "Export to Excel (CSV)"}
+        </button>
         <div role="group" aria-label="View" className="inline-flex overflow-hidden rounded border">
           <Link
             to="/requests"
@@ -171,6 +203,34 @@ function InboxPage() {
           <option value="">All priorities</option>
           {(Object.keys(PRIORITY) as Priority[]).map((p) => <option key={p} value={p}>{PRIORITY[p].label}</option>)}
         </select>
+        <label className="sr-only" htmlFor="i-status">Status</label>
+        <select
+          id="i-status"
+          className={selectCls}
+          value={search.status && !search.status.includes(",") ? search.status : ""}
+          onChange={(e) => set({ status: e.target.value || undefined, all: e.target.value ? undefined : search.all })}
+        >
+          <option value="">Any status</option>
+          {(Object.keys(STATUS) as Status[]).map((st) => <option key={st} value={st}>{STATUS[st].label}</option>)}
+        </select>
+        <span className="flex items-center gap-1.5 text-sm">
+          <label className="sr-only" htmlFor="i-datefield">Date type</label>
+          <select id="i-datefield" className={selectCls} value={search.dateField ?? "submitted"}
+            onChange={(e) => set({ dateField: e.target.value === "completed" ? "completed" : undefined })}>
+            <option value="submitted">Submitted</option>
+            <option value="completed">Completed</option>
+          </select>
+          <label className="sr-only" htmlFor="i-from">From</label>
+          <input id="i-from" type="date" className={selectCls} value={search.from ?? ""} onChange={(e) => set({ from: e.target.value || undefined })} />
+          <span className="text-muted-foreground">to</span>
+          <label className="sr-only" htmlFor="i-to">To</label>
+          <input id="i-to" type="date" className={selectCls} value={search.to ?? ""} onChange={(e) => set({ to: e.target.value || undefined })} />
+        </span>
+        {(search.q || search.status || search.priority || search.customer || search.domain || search.from || search.to) && (
+          <Link to="/requests" search={{ view: search.view }} className="text-sm text-primary hover:underline">
+            Clear filters
+          </Link>
+        )}
         {!board && (
           <>
             <label className="sr-only" htmlFor="i-sort">Sort</label>
@@ -179,6 +239,7 @@ function InboxPage() {
               <option value="priority">Sort: priority</option>
               <option value="newest">Sort: newest</option>
               <option value="oldest">Sort: oldest</option>
+              <option value="completed">Sort: recently completed</option>
             </select>
           </>
         )}

@@ -1,7 +1,7 @@
 from datetime import timedelta
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.security import OAuth2PasswordRequestForm
 
@@ -9,6 +9,7 @@ from app import crud
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
 from app.core import security
 from app.core.config import settings
+from app.services import events
 from app.models import ApprovalStatus, Message, NewPassword, Token, UserPublic, UserUpdate
 from app.utils import (
     generate_password_reset_token,
@@ -22,7 +23,7 @@ router = APIRouter(tags=["login"])
 
 @router.post("/login/access-token")
 def login_access_token(
-    session: SessionDep, form_data: Annotated[OAuth2PasswordRequestForm, Depends()]
+    request: Request, session: SessionDep, form_data: Annotated[OAuth2PasswordRequestForm, Depends()]
 ) -> Token:
     """
     OAuth2 compatible token login, get an access token for future requests
@@ -30,7 +31,12 @@ def login_access_token(
     user = crud.authenticate(
         session=session, email=form_data.username, password=form_data.password
     )
+    ip = request.client.host if request.client else None
     if not user:
+        known = crud.get_user_by_email(session=session, email=form_data.username)
+        events.audit(session, actor_id=known.id if known else None, action="login_failed",
+                     entity="user", new={"email": form_data.username}, ip=ip)
+        session.commit()
         raise HTTPException(status_code=400, detail="Incorrect email or password")
     elif user.approval_status == ApprovalStatus.pending:
         raise HTTPException(status_code=400, detail="Your account is waiting for admin approval.")
@@ -38,6 +44,8 @@ def login_access_token(
         raise HTTPException(status_code=400, detail="Your account request was not approved. Contact the ReportOps administrator.")
     elif not user.is_active:
         raise HTTPException(status_code=400, detail="Inactive user")
+    events.audit(session, actor_id=user.id, action="login", entity="user", entity_id=user.id, ip=ip)
+    session.commit()
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     return Token(
         access_token=security.create_access_token(

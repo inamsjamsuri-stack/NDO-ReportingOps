@@ -2,10 +2,11 @@
 switches, audit log and SLA recalculation."""
 
 import uuid
+from datetime import date, datetime, time, timedelta
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
-from sqlmodel import SQLModel, col, select
+from sqlmodel import SQLModel, col, func, select
 
 from app.api.deps import AdminUser, CurrentUser, ManagerOrAdmin, SessionDep
 from app.models import (
@@ -164,12 +165,29 @@ def switch_transition(session: SessionDep, admin: AdminUser, transition_id: uuid
 # -- Audit log (read only) -------------------------------------------------------
 
 
-@router.get("/audit-log", response_model=list[AuditLog])
+class AuditPage(SQLModel):
+    data: list[AuditLog]
+    count: int
+
+
+@router.get("/audit-log", response_model=AuditPage)
 def read_audit_log(session: SessionDep, _: AdminUser, entity: str | None = None,
-                   action: str | None = None, skip: int = 0, limit: int = 100) -> Any:
+                   action: str | None = None, actor_id: uuid.UUID | None = None,
+                   date_from: date | None = None, date_to: date | None = None,
+                   skip: int = 0, limit: int = 100) -> Any:
+    """Read-only list of important changes, newest first."""
     stmt = select(AuditLog)
     if entity:
         stmt = stmt.where(AuditLog.entity == entity)
     if action:
         stmt = stmt.where(col(AuditLog.action).startswith(action))
-    return session.exec(stmt.order_by(col(AuditLog.id).desc()).offset(skip).limit(min(limit, 500))).all()
+    if actor_id:
+        stmt = stmt.where(AuditLog.actor_id == actor_id)
+    tz = sla.load_calendar(session).tz
+    if date_from:
+        stmt = stmt.where(col(AuditLog.at) >= datetime.combine(date_from, time(), tzinfo=tz))
+    if date_to:
+        stmt = stmt.where(col(AuditLog.at) < datetime.combine(date_to + timedelta(days=1), time(), tzinfo=tz))
+    count = session.exec(select(func.count()).select_from(stmt.subquery())).one()
+    rows = session.exec(stmt.order_by(col(AuditLog.id).desc()).offset(skip).limit(min(limit, 500))).all()
+    return AuditPage(data=list(rows), count=count)

@@ -4,9 +4,9 @@ import { type FormEvent, useEffect, useState } from "react"
 
 import { PageHeader, Tag } from "@/components/Common/Badges"
 import useCustomToast from "@/hooks/useCustomToast"
-import { useLookups } from "@/hooks/useLookups"
+import { personName, useLookups } from "@/hooks/useLookups"
 import { api, errorMessage, type MasterKind } from "@/lib/api"
-import { CATEGORY, fmtDate, fmtHours, PRIORITY, ROLE } from "@/lib/format"
+import { CATEGORY, fmtDate, fmtDateTime, fmtHours, PRIORITY, ROLE } from "@/lib/format"
 import type { CalendarSettings, Category, Holiday, Me, Priority, Role, SlaPolicy } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
@@ -28,6 +28,7 @@ const TABS = [
   { key: "master", label: "Master data" },
   { key: "sla", label: "SLA policies" },
   { key: "calendar", label: "Holidays & hours" },
+  { key: "audit", label: "Audit log" },
 ] as const
 type TabKey = (typeof TABS)[number]["key"]
 
@@ -55,6 +56,7 @@ function AdminPage() {
       {tab === "master" && <MasterTab />}
       {tab === "sla" && <SlaTab />}
       {tab === "calendar" && <CalendarTab />}
+      {tab === "audit" && <AuditTab />}
     </div>
   )
 }
@@ -619,5 +621,113 @@ function TimeField({ label, value, onChange }: { label: string; value: string; o
       {label}
       <input type="time" className={inputCls} value={value} onChange={(e) => onChange(e.target.value)} />
     </label>
+  )
+}
+
+// -- Audit log --------------------------------------------------------------------
+
+const AUDIT_ACTIONS: { value: string; label: string }[] = [
+  { value: "", label: "All actions" },
+  { value: "login", label: "Logins" },
+  { value: "user.", label: "Users and accounts" },
+  { value: "request.", label: "Requests" },
+  { value: "report.", label: "Report catalog" },
+  { value: "sla", label: "SLA policies and recalculation" },
+  { value: "holiday.", label: "Holidays" },
+  { value: "calendar.", label: "Working hours" },
+  { value: "master.", label: "Master data" },
+  { value: "workflow.", label: "Workflow switches" },
+  { value: "comment.", label: "Deleted comments" },
+  { value: "export", label: "Exports" },
+]
+const AUDIT_PAGE = 50
+
+function short(v: unknown): string {
+  if (v === null || v === undefined) return ""
+  if (typeof v !== "object") return String(v)
+  return Object.entries(v as Record<string, unknown>)
+    .map(([k, x]) => `${k.replace(/_/g, " ")}: ${typeof x === "object" && x !== null ? JSON.stringify(x) : String(x)}`)
+    .join(" · ")
+}
+
+function AuditTab() {
+  const lk = useLookups()
+  const [action, setAction] = useState("")
+  const [actor, setActor] = useState("")
+  const [from, setFrom] = useState("")
+  const [to, setTo] = useState("")
+  const [page, setPage] = useState(1)
+  const params = {
+    action: action || undefined,
+    actor_id: actor || undefined,
+    date_from: from || undefined,
+    date_to: to || undefined,
+    skip: (page - 1) * AUDIT_PAGE,
+    limit: AUDIT_PAGE,
+  }
+  const { data, isLoading } = useQuery({ queryKey: ["audit", params], queryFn: () => api.auditLog(params) })
+  const pages = Math.max(1, Math.ceil((data?.count ?? 0) / AUDIT_PAGE))
+  const people = Object.values(lk.personById).sort((a, b) => (a.full_name ?? "").localeCompare(b.full_name ?? ""))
+  const reset = (fn: () => void) => {
+    fn()
+    setPage(1)
+  }
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-sm text-muted-foreground">
+        Every important change, newest first. This list cannot be edited or deleted, not even by an admin.
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="sr-only" htmlFor="a-action">Action</label>
+        <select id="a-action" className={cn(inputCls, "w-auto")} value={action} onChange={(e) => reset(() => setAction(e.target.value))}>
+          {AUDIT_ACTIONS.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
+        </select>
+        <label className="sr-only" htmlFor="a-actor">User</label>
+        <select id="a-actor" className={cn(inputCls, "w-auto")} value={actor} onChange={(e) => reset(() => setActor(e.target.value))}>
+          <option value="">All users</option>
+          {people.map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}
+        </select>
+        <label className="sr-only" htmlFor="a-from">From</label>
+        <input id="a-from" type="date" className={cn(inputCls, "w-auto")} value={from} onChange={(e) => reset(() => setFrom(e.target.value))} />
+        <span className="text-sm text-muted-foreground">to</span>
+        <label className="sr-only" htmlFor="a-to">To</label>
+        <input id="a-to" type="date" className={cn(inputCls, "w-auto")} value={to} onChange={(e) => reset(() => setTo(e.target.value))} />
+      </div>
+      <div className="overflow-x-auto rounded-md border">
+        <table className="w-full text-sm">
+          <thead className="bg-muted/60">
+            <tr className="text-left text-xs text-muted-foreground">
+              {["Time (WIB)", "User", "Action", "Before", "After", "IP"].map((h) => (
+                <th key={h} scope="col" className="whitespace-nowrap px-3 py-2.5 font-medium">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {isLoading && <tr><td colSpan={6} className="px-3 py-6 text-center text-muted-foreground">Loading…</td></tr>}
+            {!isLoading && (data?.data ?? []).length === 0 && (
+              <tr><td colSpan={6} className="px-3 py-8 text-center text-muted-foreground">Nothing matches these filters.</td></tr>
+            )}
+            {(data?.data ?? []).map((a) => (
+              <tr key={a.id} className="border-t align-top">
+                <td className="tabular whitespace-nowrap px-3 py-2">{fmtDateTime(a.at)}</td>
+                <td className="whitespace-nowrap px-3 py-2">{a.actor_id ? personName(lk.personById, a.actor_id, lk.me?.id) : "System / not signed in"}</td>
+                <td className="whitespace-nowrap px-3 py-2 font-medium">{a.action}</td>
+                <td className="max-w-[320px] px-3 py-2 text-muted-foreground">{short(a.old_value)}</td>
+                <td className="max-w-[320px] px-3 py-2">{short(a.new_value)}</td>
+                <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">{a.ip_address ?? ""}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="flex items-center justify-between text-sm text-muted-foreground">
+        <span>{data ? `${data.count} entries` : ""}</span>
+        <span className="flex items-center gap-2">
+          <button type="button" className={btn} disabled={page <= 1} onClick={() => setPage(page - 1)}>Previous</button>
+          Page {page} of {pages}
+          <button type="button" className={btn} disabled={page >= pages} onClick={() => setPage(page + 1)}>Next</button>
+        </span>
+      </div>
+    </div>
   )
 }
