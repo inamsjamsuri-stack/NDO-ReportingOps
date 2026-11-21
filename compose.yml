@@ -1,0 +1,86 @@
+# ReportOps – Podman deployment
+#
+#   cp .env.example .env      # then set real secrets
+#   podman compose up -d --build
+#
+# Works with `podman compose` (Podman 4.7+) or `podman-compose`.
+# Services: db (PostgreSQL), backend (API + built web app), worker (15-minute
+# SLA/notification job) and backup (daily dump). All data lives in named
+# volumes, so `podman compose down` / `up` and server reboots keep it.
+
+services:
+  db:
+    image: docker.io/library/postgres:16
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d app"]
+      interval: 10s
+      retries: 5
+      start_period: 30s
+      timeout: 10s
+    volumes:
+      - reportops-db:/var/lib/postgresql/data
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Variable not set}
+      POSTGRES_DB: app
+      TZ: UTC
+
+  backend:
+    image: localhost/reportops-backend:latest
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["bash", "-c", "bash scripts/prestart.sh && fastapi run --workers 4"]
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    env_file: .env
+    environment: &backend-env
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:?Variable not set}@db:5432/app
+      ATTACHMENT_DIR: /data/attachments
+    volumes:
+      - reportops-files:/data/attachments
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/utils/health-check/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  worker:
+    image: localhost/reportops-backend:latest
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    command: ["python", "-m", "app.jobs"]
+    env_file: .env
+    environment: *backend-env
+    volumes:
+      - reportops-files:/data/attachments
+
+  backup:
+    image: docker.io/library/postgres:16
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGHOST: db
+      PGUSER: postgres
+      PGPASSWORD: ${POSTGRES_PASSWORD:?Variable not set}
+      PGDATABASE: app
+      BACKUP_HOUR: ${BACKUP_HOUR:-01}
+      TZ: Asia/Jakarta
+    volumes:
+      - ./scripts/backup.sh:/backup.sh:ro
+      - ./scripts/restore.sh:/restore.sh:ro
+      - reportops-files:/data/attachments:ro
+      - ${BACKUP_DIR:-./backups}:/backups
+    command: ["bash", "/backup.sh", "--loop"]
+
+volumes:
+  reportops-db:
+  reportops-files:
