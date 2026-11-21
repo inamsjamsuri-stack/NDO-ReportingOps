@@ -24,7 +24,7 @@ engine = create_engine(str(settings.DATABASE_URL), pool_pre_ping=True)
 # for more details: https://github.com/fastapi/full-stack-fastapi-template/issues/28
 
 DOMAINS = ["RAN", "Transmission", "Datacomm", "Core", "Operation", "Benchmarking"]
-REQUEST_TYPES = ["New Report", "Report Change", "Data Extraction", "Data Fix / Correction", "Analysis"]
+REQUEST_TYPES = ["New Report", "Report Change", "Data Fix / Correction"]
 # Starting SLA targets from PRD v1.1, in working minutes (8 working hours a day).
 SLA_TARGETS = {
     Priority.critical: (120, 480),

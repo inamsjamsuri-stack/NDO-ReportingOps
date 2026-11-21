@@ -386,6 +386,12 @@ MANAGER_ONLY_FIELDS = {
 
 
 class Request(SQLModel, table=True):
+    __table_args__ = (
+        # A one-time report is always an ad hoc request.
+        sa.CheckConstraint(
+            "frequency <> 'one_time' OR category = 'ad_hoc'", name="ck_request_one_time_ad_hoc"
+        ),
+    )
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     code: str = Field(unique=True, max_length=20)
     title: str = Field(max_length=150)

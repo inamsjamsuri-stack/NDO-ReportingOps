@@ -22,6 +22,8 @@ from app.models import (
     Assignment,
     AssignmentRole,
     Attachment,
+    Category,
+    Frequency,
     Request,
     RequestCreate,
     RequestUpdate,
@@ -107,6 +109,8 @@ def create(session: Session, data: RequestCreate, user: User) -> Request:
         raise TransitionError("Pick a report from the catalog or type a new report name.", 422)
     if data.required_date < datetime.now(UTC).date():
         raise TransitionError("Required date must be today or later.", 422)
+    if data.frequency == Frequency.one_time:
+        data.category = Category.ad_hoc  # a one-time report is always ad hoc
     now = datetime.now(UTC)
     req = Request(
         **data.model_dump(exclude={"requester_id"}),
@@ -149,6 +153,9 @@ def update(session: Session, req: Request, data: RequestUpdate, user: User) -> R
             raise TransitionError(f"Only a manager can change: {', '.join(sorted(blocked))}.", 403)
     if req.status in (Status.completed, Status.cancelled, Status.rejected):
         raise TransitionError("Closed requests cannot be edited.", 409)
+    # A one-time report is always ad hoc.
+    if changes.get("frequency", req.frequency) == Frequency.one_time:
+        changes["category"] = Category.ad_hoc
     log: dict[str, Any] = {}
     for k, v in changes.items():
         old = getattr(req, k)

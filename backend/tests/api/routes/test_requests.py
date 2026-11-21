@@ -158,3 +158,17 @@ def test_dashboard_matches_database(client: TestClient, db: Session) -> None:
     assert d["open"] == listed_open
     overdue_list = client.get(f"{API}/requests/", headers=mgr_h, params={"overdue": True}).json()["count"]
     assert d["overdue"] == overdue_list
+
+
+def test_one_time_is_always_ad_hoc(client: TestClient, db: Session) -> None:
+    cust, domain, rtype = _master(db)
+    req_h, _ = _user(client, db, Role.requester, cust)
+    body = {
+        "title": "One-time outage summary", "customer_id": cust, "contract_type": "contract",
+        "category": "regular", "request_type_id": rtype, "domain_id": domain, "report_name": "Outage summary",
+        "frequency": "one_time", "business_purpose": "Summary for the management meeting.",
+        "priority": "medium", "required_date": (date.today() + timedelta(days=5)).isoformat(),
+    }
+    r = client.post(f"{API}/requests/", headers=req_h, json=body)
+    assert r.status_code == 200, r.text
+    assert r.json()["category"] == "ad_hoc"
