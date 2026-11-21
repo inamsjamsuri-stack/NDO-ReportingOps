@@ -51,6 +51,7 @@ services:
 
   worker:
     image: localhost/reportops-backend:latest
+    pull_policy: never   # built locally by the backend service
     restart: always
     depends_on:
       backend:
