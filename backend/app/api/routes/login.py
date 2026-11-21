@@ -97,11 +97,14 @@ def reset_password(session: SessionDep, body: NewPassword) -> Message:
     elif not user.is_active:
         raise HTTPException(status_code=400, detail="Inactive user")
     user_in_update = UserUpdate(password=body.new_password)
-    crud.update_user(
+    user = crud.update_user(
         session=session,
         db_user=user,
         user_in=user_in_update,
     )
+    user.must_change_password = False
+    session.add(user)
+    session.commit()
     return Message(message="Password updated successfully")
 
 

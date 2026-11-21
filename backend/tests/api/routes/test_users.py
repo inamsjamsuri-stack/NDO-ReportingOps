@@ -529,3 +529,27 @@ def test_delete_user_without_privileges(
     )
     assert r.status_code == 403
     assert r.json()["detail"] == "The user doesn't have enough privileges"
+
+
+def test_temporary_password_must_be_changed(
+    client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    email, temp = random_email(), random_lower_string()
+    r = client.post(f"{settings.API_V1_STR}/users/", headers=superuser_token_headers,
+                    json={"email": email, "password": temp, "full_name": "Temp User", "role": "engineer"})
+    assert r.status_code == 200, r.text
+    assert r.json()["must_change_password"] is True
+
+    token = client.post(f"{settings.API_V1_STR}/login/access-token",
+                        data={"username": email, "password": temp}).json()["access_token"]
+    h = {"Authorization": f"Bearer {token}"}
+    assert client.get(f"{settings.API_V1_STR}/users/me", headers=h).status_code == 200
+    r = client.get(f"{settings.API_V1_STR}/requests/", headers=h)
+    assert r.status_code == 403
+    assert "temporary password" in r.json()["detail"]
+
+    new = random_lower_string()
+    r = client.patch(f"{settings.API_V1_STR}/users/me/password", headers=h,
+                     json={"current_password": temp, "new_password": new})
+    assert r.status_code == 200
+    assert client.get(f"{settings.API_V1_STR}/requests/", headers=h).status_code == 200

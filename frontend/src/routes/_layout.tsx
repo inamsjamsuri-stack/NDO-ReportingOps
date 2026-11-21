@@ -1,8 +1,10 @@
-import { createFileRoute, Outlet, redirect } from "@tanstack/react-router"
+import { createFileRoute, Outlet, redirect, useNavigate } from "@tanstack/react-router"
+import { useEffect } from "react"
 
 import { NotificationBell } from "@/components/Layout/NotificationBell"
 import { Sidebar } from "@/components/Layout/Sidebar"
 import { isLoggedIn } from "@/hooks/useAuth"
+import { useMe } from "@/hooks/useLookups"
 
 export const Route = createFileRoute("/_layout")({
   component: Layout,
@@ -16,6 +18,13 @@ export const Route = createFileRoute("/_layout")({
 })
 
 function Layout() {
+  const { data: me } = useMe()
+  const navigate = useNavigate()
+  // A temporary password set by an admin must be changed before anything else.
+  useEffect(() => {
+    if (me?.must_change_password) navigate({ to: "/change-password" })
+  }, [me, navigate])
+
   return (
     <div className="flex min-h-svh w-full flex-wrap bg-background">
       <Sidebar />

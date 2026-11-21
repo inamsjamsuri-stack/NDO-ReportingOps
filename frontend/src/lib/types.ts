@@ -31,6 +31,7 @@ export interface Me {
   customer_id: string | null
   approval_status?: "approved" | "pending" | "rejected"
   registration_note?: string | null
+  must_change_password?: boolean
   created_at?: string | null
 }
 

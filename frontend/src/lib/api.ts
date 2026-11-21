@@ -92,7 +92,9 @@ export const api = {
   users: () => get<UsersList>("/users/", { limit: 500 }),
   engineers: () => get<UsersList>("/users/engineers"),
   directory: () => get<DirectoryEntry[]>("/users/directory"),
-  createUser: (body: Partial<Me> & { password: string }) => post<Me>("/users/", body),
+  createUser: (body: Partial<Me> & { password?: string }) => post<Me>("/users/", body),
+  changePassword: (current_password: string, new_password: string) =>
+    http.patch<{ message: string }>("/users/me/password", { current_password, new_password }).then((r) => r.data),
   updateUser: (id: string, body: Partial<Me> & { password?: string }) =>
     patch<Me>(`/users/${id}`, body),
   deactivateUser: (id: string) => del<{ message: string }>(`/users/${id}`),

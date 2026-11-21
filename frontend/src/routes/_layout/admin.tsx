@@ -204,7 +204,7 @@ function UserForm({ user, onDone }: { user: Me | null; onDone: () => void }) {
         is_active: active,
         ...(password ? { password } : {}),
       }
-      return user ? api.updateUser(user.id, body) : api.createUser({ ...body, password })
+      return user ? api.updateUser(user.id, body) : api.createUser(body)
     },
     onSuccess: () => {
       showSuccessToast("User saved")
@@ -246,8 +246,13 @@ function UserForm({ user, onDone }: { user: Me | null; onDone: () => void }) {
         </select>
       </label>
       <label className="flex flex-col gap-1 text-xs">
-        {user ? "New password (leave empty to keep)" : "Password"}
-        <input type="password" minLength={8} required={!user} className={inputCls} value={password} onChange={(e) => setPassword(e.target.value)} />
+        {user ? "Temporary password (leave empty to keep)" : "Temporary password (optional)"}
+        <input type="password" minLength={8} className={inputCls} value={password} onChange={(e) => setPassword(e.target.value)} />
+        <span className="text-muted-foreground">
+          {user
+            ? "The user must change it at next login."
+            : "Leave empty to email the user a link to set their own password. If you set one, they must change it at first login."}
+        </span>
       </label>
       <label className="flex items-center gap-2 self-end pb-2 text-sm">
         <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> Active

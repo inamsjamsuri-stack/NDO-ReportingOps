@@ -16,6 +16,7 @@ from app.api.deps import (
 from app.core.config import settings
 from app.core.security import get_password_hash, verify_password
 from app.models import (
+    AdminUserCreate,
     ApprovalIn,
     ApprovalStatus,
     Customer,
@@ -62,9 +63,10 @@ def read_users(session: SessionDep, skip: int = 0, limit: int = 100) -> Any:
 @router.post(
     "/", dependencies=[Depends(get_current_active_superuser)], response_model=UserPublic
 )
-def create_user(*, session: SessionDep, user_in: UserCreate) -> Any:
+def create_user(*, session: SessionDep, user_in: AdminUserCreate) -> Any:
     """
-    Create new user.
+    Create new user. Without a password the person gets an email link to set one;
+    with a password they must change it when they first log in.
     """
     user = crud.get_user_by_email(session=session, email=user_in.email)
     if user:
@@ -72,18 +74,26 @@ def create_user(*, session: SessionDep, user_in: UserCreate) -> Any:
             status_code=400,
             detail="The user with this email already exists in the system.",
         )
-
-    user = crud.create_user(session=session, user_create=user_in)
-    if settings.emails_enabled and user_in.email:
-        email_data = generate_new_account_email(
-            email_to=user_in.email, username=user_in.email, password=user_in.password
+    if not user_in.password and not settings.emails_enabled:
+        raise HTTPException(
+            status_code=422,
+            detail="Email is not set up, so give a temporary password. The user must change it at first login.",
         )
-        send_email(
-            email_to=user_in.email,
-            subject=email_data.subject,
-            html_content=email_data.html_content,
-        )
-    return user
+    data = user_in.model_dump(exclude={"password"})
+    db_user = User(**data)
+    db_user.is_superuser = db_user.is_superuser or db_user.role == Role.admin
+    if db_user.is_superuser:
+        db_user.role = Role.admin
+    if user_in.password:
+        db_user.hashed_password = get_password_hash(user_in.password)
+        db_user.must_change_password = True
+    session.add(db_user)
+    session.commit()
+    session.refresh(db_user)
+    if settings.emails_enabled:
+        email_data = generate_new_account_email(email_to=db_user.email, full_name=db_user.full_name)
+        send_email(email_to=db_user.email, subject=email_data.subject, html_content=email_data.html_content)
+    return db_user
 
 
 @router.patch("/me", response_model=UserPublic)
@@ -115,6 +125,8 @@ def update_password_me(
     """
     Update own password.
     """
+    if not current_user.hashed_password:
+        raise HTTPException(status_code=400, detail="Use the link in your email to set a password.")
     verified, _ = verify_password(body.current_password, current_user.hashed_password)
     if not verified:
         raise HTTPException(status_code=400, detail="Incorrect password")
@@ -124,6 +136,7 @@ def update_password_me(
         )
     hashed_password = get_password_hash(body.new_password)
     current_user.hashed_password = hashed_password
+    current_user.must_change_password = False
     session.add(current_user)
     session.commit()
     return Message(message="Password updated successfully")
@@ -354,6 +367,12 @@ def update_user(
             )
 
     db_user = crud.update_user(session=session, db_user=db_user, user_in=user_in)
+    if user_in.password:
+        # A password set by an admin is temporary.
+        db_user.must_change_password = True
+        session.add(db_user)
+        session.commit()
+        session.refresh(db_user)
     return db_user
 
 

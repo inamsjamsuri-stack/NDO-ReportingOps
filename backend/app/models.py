@@ -157,6 +157,13 @@ class UserCreate(UserBase):
     password: str = Field(min_length=8, max_length=128)
 
 
+class AdminUserCreate(UserBase):
+    """Admin creates an account. Without a password, the person gets an email
+    link to set their own. With a password, they must change it at first login."""
+
+    password: str | None = Field(default=None, min_length=8, max_length=128)
+
+
 class UserRegister(SQLModel):
     """Self-registration by a requester. The account stays inactive until an
     admin approves it."""
@@ -206,6 +213,7 @@ class User(UserBase, table=True):
         default=ApprovalStatus.approved, sa_type=_enum(ApprovalStatus, "approval_status")
     )
     registration_note: str | None = Field(default=None, max_length=500)
+    must_change_password: bool = False  # set when an admin gives a temporary password
     failed_login_count: int = 0
     locked_until: datetime | None = _ts(default=None)
     last_login_at: datetime | None = _ts(default=None)
@@ -217,6 +225,7 @@ class UserPublic(UserBase):
     id: uuid.UUID
     approval_status: ApprovalStatus = ApprovalStatus.approved
     registration_note: str | None = None
+    must_change_password: bool = False
     created_at: datetime | None = None
 
 
