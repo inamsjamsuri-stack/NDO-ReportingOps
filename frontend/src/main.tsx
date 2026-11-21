@@ -22,7 +22,9 @@ client.setConfig({
 const handleApiError = (error: Error) => {
   if (
     error instanceof AxiosError &&
-    [401, 403].includes(error.response?.status ?? 0)
+    // Only an invalid or expired login signs the user out. A 403 means "your
+    // role cannot do this" and is shown as a message instead.
+    error.response?.status === 401
   ) {
     localStorage.removeItem("access_token")
     window.location.href = "/login"
@@ -46,7 +48,7 @@ declare module "@tanstack/react-router" {
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
+    <ThemeProvider defaultTheme="light" storageKey="vite-ui-theme">
       <QueryClientProvider client={queryClient}>
         <RouterProvider router={router} />
         <Toaster richColors closeButton />

@@ -2,7 +2,7 @@ import uuid
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlmodel import col, func, select
+from sqlmodel import SQLModel, col, func, select
 
 from app import crud
 from app.api.deps import (
@@ -141,6 +141,21 @@ def delete_user_me(session: SessionDep, current_user: CurrentUser) -> Any:
     session.add(current_user)
     session.commit()
     return Message(message="User deactivated")
+
+
+class DirectoryEntry(SQLModel):
+    id: uuid.UUID
+    full_name: str | None
+    role: Role
+
+
+@router.get("/directory", response_model=list[DirectoryEntry])
+def read_directory(session: SessionDep, _: CurrentUser) -> Any:
+    """
+    Names and roles of active users, so every screen can show who did what.
+    """
+    users = session.exec(select(User).where(User.is_active).order_by(col(User.full_name))).all()
+    return [DirectoryEntry(id=u.id, full_name=u.full_name or u.email, role=u.role) for u in users]
 
 
 @router.get("/engineers", response_model=UsersPublic)

@@ -44,7 +44,7 @@ export const Route = createFileRoute("/login")({
   head: () => ({
     meta: [
       {
-        title: "Log In - FastAPI Template",
+        title: "Log In - ReportOps",
       },
     ],
   }),
@@ -129,12 +129,9 @@ function Login() {
             </LoadingButton>
           </div>
 
-          <div className="text-center text-sm">
-            Don't have an account yet?{" "}
-            <RouterLink to="/signup" className="underline underline-offset-4">
-              Sign up
-            </RouterLink>
-          </div>
+          <p className="text-center text-sm text-muted-foreground">
+            No account yet? Ask the ReportOps administrator.
+          </p>
         </form>
       </Form>
     </AuthLayout>

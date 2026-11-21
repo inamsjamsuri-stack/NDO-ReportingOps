@@ -121,6 +121,8 @@ def recalculate(session: Session, req: Request, now: datetime | None = None) -> 
 
     sla.resolution_due_at = None
     sla.resolution_min = None
+    sla.resolution_target_min = policy.resolution_target_min if policy else None
+    sla.resolution_used_min = None
     sla.is_at_risk = False
     sla.is_breached = False
     if policy and approved_at is not None:
@@ -128,6 +130,7 @@ def recalculate(session: Session, req: Request, now: datetime | None = None) -> 
         sla.resolution_due_at = cal.add_minutes(approved_at, target + paused)
         end = first_completed or now
         used = max(cal.minutes_between(approved_at, end) - paused, 0)
+        sla.resolution_used_min = used
         if first_completed:
             sla.resolution_min = used
         sla.is_breached = used > target

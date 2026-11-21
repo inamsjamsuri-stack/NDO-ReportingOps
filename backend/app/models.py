@@ -637,6 +637,8 @@ class RequestSla(SQLModel, table=True):
     paused_min: int = 0
     waiting_requester_min: int = 0
     resolution_min: int | None = None
+    resolution_target_min: int | None = None
+    resolution_used_min: int | None = None  # working minutes used so far (minus hold)
     is_at_risk: bool = False
     is_breached: bool = False
 
@@ -649,6 +651,8 @@ class RequestSlaPublic(SQLModel):
     resolved_at: datetime | None
     paused_min: int
     resolution_min: int | None
+    resolution_target_min: int | None
+    resolution_used_min: int | None
     is_at_risk: bool
     is_breached: bool
 

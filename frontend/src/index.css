@@ -42,38 +42,38 @@
 }
 
 :root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.5982 0.10687 182.4689);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.5982 0.10687 182.4689);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --radius: 0.375rem;
+  --background: #ffffff;
+  --foreground: #1f1f20;
+  --card: #ffffff;
+  --card-foreground: #1f1f20;
+  --popover: #ffffff;
+  --popover-foreground: #1f1f20;
+  --primary: #c6168d;
+  --primary-foreground: #ffffff;
+  --secondary: #f2f2f2;
+  --secondary-foreground: #2d2d2d;
+  --muted: #f4f4f4;
+  --muted-foreground: #5f5f6b;
+  --accent: #fceaf4;
+  --accent-foreground: #9e1271;
+  --destructive: #b3141b;
+  --border: #e4e4e9;
+  --input: #d4d4db;
+  --ring: #e68ac4;
+  --chart-1: #4d4d4f;
+  --chart-2: #c6168d;
+  --chart-3: #ffcb05;
+  --chart-4: #32bcad;
+  --chart-5: #0096d4;
+  --sidebar: #2d2d2d;
+  --sidebar-foreground: #d6d6d8;
+  --sidebar-primary: #c6168d;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #404042;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #444446;
+  --sidebar-ring: #ffcb05;
 }
 
 .dark {
@@ -120,5 +120,15 @@
   button,
   [role="button"] {
     cursor: pointer;
+  }
+}
+
+@layer base {
+  body {
+    font-family: "Jost", ui-sans-serif, system-ui, sans-serif;
+    font-feature-settings: "tnum" 0;
+  }
+  .tabular {
+    font-variant-numeric: tabular-nums;
   }
 }

@@ -21,7 +21,7 @@ Design documents (in the ReportingOps project):
 | API: requests, transitions, assignments, hours, comments, files, catalog, master data, SLA admin, dashboard, workload, notifications, audit log | Done, integration tests written |
 | Background worker (overdue, at-risk, reminders, email) | Done |
 | Podman compose, backup and restore scripts | Done |
-| Frontend screens (from the mockups) | **Next milestone.** The template's demo screens are still in `frontend/` |
+| Frontend: Dashboard, Inbox (table + board), New request, Request detail, Report catalog, Workload, Admin (users, master data, SLA policies, holidays, working hours), notification bell, IOH brand theme | Done (milestone 2); not yet run in a browser |
 
 ## Run with Podman
 
@@ -72,10 +72,11 @@ podman compose exec backend bash scripts/tests-start.sh
 
 ## Known gaps and next steps
 
-1. Build the frontend screens from the mockups, then regenerate the API client (`scripts/generate-client.sh`).
+1. First run on the server: check every screen against the API and fix what turns up. Run `bun run typecheck` in `frontend/` once and fix any type errors (the production build skips the type check so one small type error cannot block a deploy).
 2. Replace the baseline migration with an `alembic revision --autogenerate` output before the pilot (see the note in `backend/app/alembic/versions/0001_reportops_baseline.py`).
 3. Login uses one access token valid for 8 hours. The PRD's 30-minute access token plus refresh token is still to do.
-4. The web app is served by the backend container. The PRD listed a separate frontend container; one container is simpler to run, and this can be split later if needed.
+4. The Playwright end-to-end tests in `frontend/tests` still describe the template screens and need rewriting for ReportOps.
+5. The web app is served by the backend container. The PRD listed a separate frontend container; one container is simpler to run, and this can be split later if needed.
 
 ## Development
 
